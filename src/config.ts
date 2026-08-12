@@ -3,7 +3,13 @@ import * as path from "node:path";
 
 export const CONFIG_FILE_NAME = "omp-codex-provider.local.json";
 
-const ROOT_KEYS: Record<string, true> = { version: true, apiKey: true, apiKeyEnv: true, models: true };
+const ROOT_KEYS: Record<string, true> = {
+  version: true,
+  apiKey: true,
+  apiKeyEnv: true,
+  webSearchModel: true,
+  models: true,
+};
 const MODEL_KEYS: Record<string, true> = {
   id: true,
   name: true,
@@ -83,6 +89,8 @@ export interface ProviderFileConfig {
   version: 1;
   /** Literal API key or environment-variable name, ready for OMP resolution. */
   apiKey: string;
+  /** Configured Codex model exposed to OMP's built-in Codex web search provider. */
+  webSearchModel?: string;
   models: ProviderModel[];
 }
 
@@ -262,8 +270,21 @@ export function parseProviderConfig(value: unknown, env: NodeJS.ProcessEnv = pro
   if (!models.some(model => model.api === "openai-codex-responses")) {
     fail("models", "must contain at least one openai-codex-responses model");
   }
+  const webSearchModel =
+    object.webSearchModel === undefined ? undefined : nonEmptyString(object.webSearchModel, "webSearchModel");
+  if (
+    webSearchModel !== undefined &&
+    !models.some(model => model.id === webSearchModel && model.api === "openai-codex-responses")
+  ) {
+    fail("webSearchModel", "must name a configured openai-codex-responses model");
+  }
 
-  return { version: 1, apiKey, models };
+  return {
+    version: 1,
+    apiKey,
+    ...(webSearchModel === undefined ? {} : { webSearchModel }),
+    models,
+  };
 }
 
 export async function loadProviderConfig(

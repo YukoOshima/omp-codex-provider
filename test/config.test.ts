@@ -76,11 +76,38 @@ describe("parseProviderConfig", () => {
     ]);
   });
 
+  test("accepts a configured Codex web search model", () => {
+    const config = parseProviderConfig(validConfig({ webSearchModel: "gpt-codex-test" }), {});
+
+    expect(config.webSearchModel).toBe("gpt-codex-test");
+  });
+
   test.each([
     ["both secret fields", validConfig({ apiKeyEnv: "BYTEPLUS_GATEWAY_API_KEY" }), "exactly one of apiKey or apiKeyEnv"],
     ["missing environment secret", validConfig({ apiKey: undefined, apiKeyEnv: "MISSING_KEY" }), "MISSING_KEY is not set"],
     ["unknown root field", validConfig({ extra: true }), "unknown field(s): extra"],
     ["duplicate model IDs", validConfig({ models: [codexModel(), codexModel()] }), "duplicate id(s): gpt-codex-test"],
+    [
+      "web search model missing from the configured catalog",
+      validConfig({ webSearchModel: "missing-codex-model" }),
+      "must name a configured openai-codex-responses model",
+    ],
+    [
+      "web search model using a non-Codex API",
+      validConfig({
+        webSearchModel: "claude-search",
+        models: [
+          codexModel(),
+          codexModel({
+            id: "claude-search",
+            api: "anthropic-messages",
+            baseUrl: "https://gateway.example.com",
+            thinking: { mode: "anthropic-adaptive", efforts: ["max"], defaultLevel: "max" },
+          }),
+        ],
+      }),
+      "must name a configured openai-codex-responses model",
+    ],
     [
       "missing Codex model",
       validConfig({

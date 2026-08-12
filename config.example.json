@@ -1,6 +1,7 @@
 {
   "version": 1,
   "apiKeyEnv": "BYTEPLUS_GATEWAY_API_KEY",
+  "webSearchModel": "gpt-codex-example",
   "models": [
     {
       "id": "gpt-codex-example",

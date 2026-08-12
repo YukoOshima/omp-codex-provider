@@ -9,13 +9,16 @@ import {
   type CompactionResult,
   type CompactionV2Usage,
 } from "@oh-my-pi/pi-agent-core/compaction";
-import type { Api, Model } from "@oh-my-pi/pi-ai";
+import type { Api, CodexCompactionContext, Model, ProviderSessionState } from "@oh-my-pi/pi-ai";
+import {
+  createOpenAICodexCompactionRequestContext,
+  openCodexCompactionEventStream,
+  type OpenAICodexCompactionBody,
+} from "@oh-my-pi/pi-ai/providers/openai-codex-responses";
 
 const COMPACTION_TRIGGER = { type: "compaction_trigger" } as const;
 const PROVIDER_ID = "byteplus-gateway";
 const CODEX_API = "openai-codex-responses";
-const FIRST_EVENT_TIMEOUT_MS = 100_000;
-const IDLE_TIMEOUT_MS = 300_000;
 
 export interface GatewayCompactionOptions {
   apiKey: string;
@@ -23,6 +26,9 @@ export interface GatewayCompactionOptions {
   sessionId?: string;
   promptCacheKey?: string;
   customInstructions?: string;
+  providerSessionState?: Map<string, ProviderSessionState>;
+  preferWebsockets?: boolean;
+  codexCompaction: CodexCompactionContext;
 }
 
 export interface GatewayCompactionOutcome {
@@ -81,100 +87,14 @@ function inputImageCount(item: Record<string, unknown>): number {
   return item.content.reduce((count, part) => count + (recordAt(part)?.type === "input_image" ? 1 : 0), 0);
 }
 
-function exactResponsesUrl(model: Model<Api>): string {
-  const url = new URL(model.baseUrl);
-  url.search = "";
-  return url.toString().replace(/\/$/, "");
-}
-
-function asWebSocketUrl(url: string): string {
-  const parsed = new URL(url);
-  parsed.protocol = parsed.protocol === "https:" ? "wss:" : "ws:";
-  return parsed.toString();
-}
-
-async function requestCompactionEvents(
-  model: Model<Api>,
-  body: Record<string, unknown>,
-  apiKey: string,
-  signal?: AbortSignal,
-): Promise<Record<string, unknown>[]> {
-  const socket = new (WebSocket as unknown as new (url: string, options: Bun.WebSocketOptions) => Bun.WebSocket)(
-    asWebSocketUrl(exactResponsesUrl(model)),
-    {
-      headers: {
-        ...(model.headers ?? {}),
-        Authorization: `Bearer ${apiKey}`,
-        "OpenAI-Beta": "responses_websockets=2026-02-06",
-      },
-    },
-  );
-  socket.binaryType = "nodebuffer";
-  const events: Record<string, unknown>[] = [];
-  const { promise, resolve, reject } = Promise.withResolvers<Record<string, unknown>[]>();
-  let settled = false;
-  let timeout: NodeJS.Timeout;
-  const cleanup = () => {
-    clearTimeout(timeout);
-    signal?.removeEventListener("abort", abort);
-  };
-  const fail = (error: Error) => {
-    if (settled) return;
-    settled = true;
-    cleanup();
-    socket.close(1000, "failed");
-    reject(error);
-  };
-  const resetTimeout = (ms: number) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => fail(new Error("BytePlus compaction WebSocket response timed out")), ms);
-  };
-  const abort = () => fail(new Error("BytePlus compaction aborted"));
-  timeout = setTimeout(() => fail(new Error("BytePlus compaction WebSocket connection timed out")), FIRST_EVENT_TIMEOUT_MS);
-  if (signal?.aborted) abort();
-  else signal?.addEventListener("abort", abort, { once: true });
-  socket.onopen = () => {
-    if (settled) return;
-    resetTimeout(IDLE_TIMEOUT_MS);
-    socket.send(JSON.stringify({ type: "response.create", ...body }));
-  };
-  socket.onerror = event => {
-    let detail = "handshake failed";
-    if (event && typeof event === "object" && "message" in event && typeof event.message === "string") {
-      detail = event.message;
-    }
-    fail(new Error(`BytePlus compaction WebSocket error: ${detail}`));
-  };
-  socket.onclose = event => {
-    if (!settled) fail(new Error(`BytePlus compaction WebSocket closed before completion (${event.code})`));
-  };
-  socket.onmessage = message => {
-    try {
-      const data = (message as MessageEvent<unknown>).data;
-      const text = typeof data === "string" ? data : Buffer.from(data as ArrayBuffer).toString("utf8");
-      const event = JSON.parse(text) as Record<string, unknown>;
-      events.push(event);
-      resetTimeout(IDLE_TIMEOUT_MS);
-      if (event.type === "response.completed" || event.type === "response.done") {
-        settled = true;
-        cleanup();
-        socket.close(1000, "complete");
-        resolve(events);
-      } else if (event.type === "response.failed" || event.type === "response.incomplete" || event.type === "error") {
-        fail(new Error(`BytePlus compaction failed: ${String(event.type)}`));
-      }
-    } catch (error) {
-      fail(error instanceof Error ? error : new Error(String(error)));
-    }
-  };
-  return promise;
-}
-
 export async function compactWithGatewayWebSocket(
   preparation: CompactionPreparation,
   model: Model<Api>,
   options: GatewayCompactionOptions,
 ): Promise<GatewayCompactionOutcome> {
+  if (model.api !== CODEX_API) {
+    throw new Error(`BytePlus remote compaction requires ${CODEX_API}, got ${model.api}`);
+  }
   const messages = [
     ...preparation.messagesToSummarize,
     ...preparation.turnPrefixMessages,
@@ -187,21 +107,32 @@ export async function compactWithGatewayWebSocket(
   );
   if (input.length === 0) throw new Error("BytePlus remote compaction has no provider history to compact");
   const reasoning = reasoningFor(model);
-  const body: Record<string, unknown> = {
+  const body: OpenAICodexCompactionBody = {
     model: model.requestModelId ?? model.id,
     input: [...input, COMPACTION_TRIGGER],
     instructions: options.customInstructions?.trim() || SUMMARIZATION_SYSTEM_PROMPT,
+    stream: true,
     store: false,
     ...(reasoning ? { reasoning, include: ["reasoning.encrypted_content"] } : {}),
     ...(options.promptCacheKey || options.sessionId
       ? { prompt_cache_key: options.promptCacheKey ?? options.sessionId }
       : {}),
   };
-  const events = await requestCompactionEvents(model, body, options.apiKey, options.signal);
+  const events = await openCodexCompactionEventStream(model as Model<"openai-codex-responses">, body, {
+    apiKey: options.apiKey,
+    signal: options.signal,
+    sessionId: options.sessionId,
+    providerSessionState: options.providerSessionState,
+    preferWebsockets: options.preferWebsockets,
+    codexCompaction: createOpenAICodexCompactionRequestContext({
+      context: options.codexCompaction,
+      implementation: "responses_compaction_v2",
+    }),
+  });
   let completed = false;
   let usage: CompactionV2Usage | undefined;
   const items: Record<string, unknown>[] = [];
-  for (const event of events) {
+  for await (const event of events) {
     if (event.type === "response.output_item.done") {
       const item = recordAt(event.item);
       if (item) items.push(item);

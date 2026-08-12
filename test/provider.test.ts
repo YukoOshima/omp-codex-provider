@@ -1,6 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { resolveCodexResponsesUrl } from "@oh-my-pi/pi-ai/providers/openai-codex-responses";
 import type { ProviderFileConfig } from "../src/config.ts";
-import { CODEX_API, createProviderRegistration, PROVIDER_ID } from "../src/provider.ts";
+import {
+  CODEX_API,
+  CODEX_PROVIDER_ID,
+  createCodexSearchProviderRegistration,
+  createProviderRegistration,
+  PROVIDER_ID,
+} from "../src/provider.ts";
 
 const CONFIG: ProviderFileConfig = {
   version: 1,
@@ -33,6 +40,8 @@ const CONFIG: ProviderFileConfig = {
   ],
 };
 
+const SEARCH_CONFIG: ProviderFileConfig = { ...CONFIG, webSearchModel: "gpt-codex-test" };
+
 describe("createProviderRegistration", () => {
   test("targets the existing BytePlus provider and preserves per-model URLs", () => {
     const registration = createProviderRegistration(CONFIG);
@@ -62,5 +71,31 @@ describe("createProviderRegistration", () => {
     });
     expect(anthropic?.api).toBe("anthropic-messages");
     expect(anthropic?.remoteCompaction).toBeUndefined();
+  });
+});
+
+describe("createCodexSearchProviderRegistration", () => {
+  test("creates a provider-only openai-codex override for built-in web search", () => {
+    const registration = createCodexSearchProviderRegistration(SEARCH_CONFIG);
+
+    expect(CODEX_PROVIDER_ID).toBe("openai-codex");
+    expect(registration).toEqual({
+      baseUrl: "https://gateway.example.com/v1/responses?omp_codex_suffix=",
+      apiKey: "BYTEPLUS_GATEWAY_API_KEY",
+    });
+    expect(registration?.models).toBeUndefined();
+    expect(registration?.streamSimple).toBeUndefined();
+  });
+
+  test("keeps the sentinel endpoint on /responses when OMP appends its Codex suffix", () => {
+    const registration = createCodexSearchProviderRegistration(SEARCH_CONFIG);
+    const resolved = new URL(resolveCodexResponsesUrl(registration?.baseUrl));
+
+    expect(resolved.pathname).toBe("/v1/responses");
+    expect(resolved.searchParams.get("omp_codex_suffix")).toBe("/codex/responses");
+  });
+
+  test("does not override openai-codex when web search is not configured", () => {
+    expect(createCodexSearchProviderRegistration(CONFIG)).toBeUndefined();
   });
 });

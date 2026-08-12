@@ -1,4 +1,4 @@
-export const MINIMUM_OMP_VERSION = "17.2.4";
+export const MINIMUM_OMP_VERSION = "17.2.15";
 export const MAXIMUM_OMP_MAJOR_EXCLUSIVE = 18;
 
 type NumericVersion = readonly [major: number, minor: number, patch: number];
