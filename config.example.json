@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "apiKeyEnv": "BYTEPLUS_GATEWAY_API_KEY",
+  "models": [
+    {
+      "id": "gpt-codex-example",
+      "name": "Gateway Codex Example",
+      "api": "openai-codex-responses",
+      "baseUrl": "https://gateway.example.com/v1/responses?omp_codex_suffix=",
+      "reasoning": true,
+      "input": ["text", "image"],
+      "contextWindow": 128000,
+      "maxTokens": 16384,
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      },
+      "thinking": {
+        "mode": "effort",
+        "efforts": ["medium", "high", "xhigh", "max"],
+        "defaultLevel": "high",
+        "supportsDisplay": true
+      }
+    },
+    {
+      "id": "claude-example",
+      "name": "Gateway Anthropic Example",
+      "api": "anthropic-messages",
+      "baseUrl": "https://gateway.example.com",
+      "reasoning": true,
+      "input": ["text", "image"],
+      "contextWindow": 200000,
+      "maxTokens": 16384,
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      },
+      "thinking": {
+        "mode": "anthropic-adaptive",
+        "efforts": ["medium", "high", "xhigh", "max"],
+        "defaultLevel": "high",
+        "supportsDisplay": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "name": "@yukooshima/omp-codex-provider",
+  "version": "0.1.0",
+  "description": "Strict OMP provider registration for Codex WebSocket turns and remote compaction v2 through an OpenAI Codex-compatible gateway.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YukoOshima/omp-codex-provider.git"
+  },
+  "engines": {
+    "bun": ">=1.3.14"
+  },
+  "files": [
+    "extensions",
+    "src",
+    "config.example.json"
+  ],
+  "omp": {
+    "name": "BytePlus Codex Provider",
+    "version": "0.1.0",
+    "description": "Registers byteplus-gateway with Codex WebSocket and remote-compaction-v2 support.",
+    "extensions": [
+      "./extensions/byteplus-codex-provider.ts"
+    ]
+  },
+  "scripts": {
+    "test": "bun test",
+    "check:types": "tsc --noEmit",
+    "check": "bun run test && bun run check:types"
+  },
+  "peerDependencies": {
+    "@oh-my-pi/pi-coding-agent": ">=17.2.4 <18"
+  },
+  "devDependencies": {
+    "@oh-my-pi/pi-coding-agent": "17.2.15",
+    "@types/bun": "^1.3.14",
+    "typescript": "^5.9.3"
+  }
+}
