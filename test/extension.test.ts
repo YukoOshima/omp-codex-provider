@@ -2,8 +2,15 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
-import type { ExtensionAPI, ProviderConfig } from "@oh-my-pi/pi-coding-agent";
-import { registerConfiguredProvider } from "../extensions/byteplus-codex-provider.ts";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+  ProviderConfig,
+  SessionBeforeCompactEvent,
+} from "@oh-my-pi/pi-coding-agent";
+import { createGatewayCompactionHandler, registerConfiguredProvider } from "../extensions/byteplus-codex-provider.ts";
+import type { CompactionPreparation } from "@oh-my-pi/pi-agent-core/compaction";
+import type { Model } from "@oh-my-pi/pi-ai";
 
 const temporaryDirectories: string[] = [];
 
@@ -70,5 +77,37 @@ describe("registerConfiguredProvider", () => {
       "requires OMP >=17.2.4 <18",
     );
     expect(registered).toBeFalse();
+  });
+});
+
+describe("createGatewayCompactionHandler", () => {
+  const model = {
+    provider: "byteplus-gateway",
+    id: "gpt-codex-test",
+    api: "openai-codex-responses",
+  } as Model;
+  const preparation = {
+    settings: { enabled: true, keepRecentTokens: 1, remoteEnabled: true, remoteStreamingV2Enabled: true },
+  } as CompactionPreparation;
+  const event = {
+    type: "session_before_compact",
+    preparation,
+    branchEntries: [],
+    signal: new AbortController().signal,
+  } as SessionBeforeCompactEvent;
+  const context = {
+    model,
+    sessionManager: { getSessionId: () => "session-test" },
+    modelRegistry: { getApiKey: async () => "test-key" },
+  } as unknown as ExtensionContext;
+
+  test("returns cancel when remote compaction fails so core cannot fall back locally", async () => {
+    const handler = createGatewayCompactionHandler({
+      compact: async () => {
+        throw new Error("gateway unavailable");
+      },
+    });
+
+    await expect(handler(event, context)).resolves.toEqual({ cancel: true });
   });
 });

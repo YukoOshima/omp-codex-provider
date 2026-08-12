@@ -19,7 +19,7 @@ It replaces the `byteplus-gateway` model catalog from one strict local file and 
 Install a tagged release, then restart OMP:
 
 ```bash
-omp plugin install github:YukoOshima/omp-codex-provider#v0.1.0
+omp plugin install github:YukoOshima/omp-codex-provider#v0.1.1
 ```
 
 ## Configure
@@ -109,7 +109,7 @@ The extension fails during loading when the local file is missing, invalid, inse
 
 It never logs API-key values.
 
-Remote compaction is bounded to 29 seconds because OMP 17.2.x enforces a 30-second extension-handler deadline. A timeout fails the compaction instead of starting a second fallback request.
+Remote compaction is bounded to 29 seconds because OMP 17.2.x enforces a 30-second extension-handler deadline. Any credential, transport, protocol, or timeout failure returns `{ cancel: true }`, so OMP aborts compaction instead of invoking its native V2 collector or generating a local LLM summary.
 
 ## Verify
 

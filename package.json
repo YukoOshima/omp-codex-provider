@@ -1,6 +1,6 @@
 {
   "name": "@yukooshima/omp-codex-provider",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Strict OMP provider registration for Codex WebSocket turns and remote compaction v2 through an OpenAI Codex-compatible gateway.",
   "type": "module",
   "license": "MIT",
@@ -18,7 +18,7 @@
   ],
   "omp": {
     "name": "BytePlus Codex Provider",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Registers byteplus-gateway with Codex WebSocket and remote-compaction-v2 support.",
     "extensions": [
       "./extensions/byteplus-codex-provider.ts"
