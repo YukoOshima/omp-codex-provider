@@ -29,9 +29,11 @@ const THINKING_KEYS: Record<string, true> = {
   efforts: true,
   defaultLevel: true,
   supportsDisplay: true,
+  requiresEffort: true,
 };
 const SUPPORTED_APIS: Record<SupportedApi, true> = {
   "openai-codex-responses": true,
+  "openai-completions": true,
   "anthropic-messages": true,
 };
 const THINKING_MODES: Record<ThinkingMode, true> = {
@@ -52,7 +54,7 @@ const EFFORTS: Record<Effort, true> = {
 const INPUT_TYPES: Record<InputType, true> = { text: true, image: true };
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-export type SupportedApi = "openai-codex-responses" | "anthropic-messages";
+export type SupportedApi = "openai-codex-responses" | "openai-completions" | "anthropic-messages";
 export type ThinkingMode = "effort" | "budget" | "google-level" | "anthropic-adaptive" | "anthropic-budget-effort";
 export type Effort = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 export type InputType = "text" | "image";
@@ -69,6 +71,7 @@ export interface ProviderThinking {
   efforts: Effort[];
   defaultLevel?: Effort;
   supportsDisplay?: boolean;
+  requiresEffort?: boolean;
 }
 
 export interface ProviderModel {
@@ -175,8 +178,11 @@ function absoluteHttpsUrl(value: unknown, location: string, api: SupportedApi): 
     if (url.search !== "?omp_codex_suffix=") {
       fail(location, "must end with ?omp_codex_suffix= for openai-codex-responses");
     }
-  } else if (url.search) {
-    fail(location, "must not contain a query");
+  } else {
+    if (raw.includes("?")) fail(location, "must not contain a query");
+    if (api === "openai-completions" && url.pathname.replace(/\/$/, "").endsWith("/chat/completions")) {
+      fail(location, "must be a base URL without the /chat/completions route for openai-completions");
+    }
   }
   return normalized;
 }
@@ -196,8 +202,8 @@ function parseThinking(value: unknown, location: string, api: SupportedApi): Pro
   const object = objectAt(value, location);
   rejectUnknownKeys(object, THINKING_KEYS, location);
   const mode = oneOf(object.mode, THINKING_MODES, `${location}.mode`);
-  if (api === "openai-codex-responses" && mode !== "effort") {
-    fail(`${location}.mode`, "must be effort for openai-codex-responses");
+  if ((api === "openai-codex-responses" || api === "openai-completions") && mode !== "effort") {
+    fail(`${location}.mode`, `must be effort for ${api}`);
   }
   if (api === "anthropic-messages" && mode !== "anthropic-adaptive" && mode !== "anthropic-budget-effort") {
     fail(`${location}.mode`, "must be an Anthropic thinking mode for anthropic-messages");
@@ -215,6 +221,9 @@ function parseThinking(value: unknown, location: string, api: SupportedApi): Pro
     ...(object.supportsDisplay === undefined
       ? {}
       : { supportsDisplay: booleanAt(object.supportsDisplay, `${location}.supportsDisplay`) }),
+    ...(object.requiresEffort === undefined
+      ? {}
+      : { requiresEffort: booleanAt(object.requiresEffort, `${location}.requiresEffort`) }),
   };
 }
 

@@ -26,6 +26,29 @@
       }
     },
     {
+      "id": "chat-completions-example",
+      "name": "Gateway Chat Completions Example",
+      "api": "openai-completions",
+      "baseUrl": "https://gateway.example.com/v1",
+      "reasoning": true,
+      "input": ["text", "image"],
+      "supportsTools": true,
+      "contextWindow": 128000,
+      "maxTokens": 16384,
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      },
+      "thinking": {
+        "mode": "effort",
+        "efforts": ["low", "high", "max"],
+        "defaultLevel": "max",
+        "requiresEffort": true
+      }
+    },
+    {
       "id": "claude-example",
       "name": "Gateway Anthropic Example",
       "api": "anthropic-messages",

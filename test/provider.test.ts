@@ -26,6 +26,24 @@ const CONFIG: ProviderFileConfig = {
       thinking: { mode: "effort", efforts: ["high", "max"], defaultLevel: "max" },
     },
     {
+      id: "kimi-k3",
+      name: "Kimi K3",
+      api: "openai-completions",
+      baseUrl: "https://gateway.example.com/v1",
+      reasoning: true,
+      input: ["text", "image"],
+      supportsTools: true,
+      contextWindow: 1048576,
+      maxTokens: 1048576,
+      cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 0 },
+      thinking: {
+        mode: "effort",
+        efforts: ["low", "high", "max"],
+        defaultLevel: "max",
+        requiresEffort: true,
+      },
+    },
+    {
       id: "claude-test",
       name: "Claude Test",
       api: "anthropic-messages",
@@ -53,6 +71,7 @@ describe("createProviderRegistration", () => {
     expect(registration.streamSimple).toBeUndefined();
     expect(registration.models?.map(model => [model.id, model.baseUrl])).toEqual([
       ["gpt-codex-test", "https://gateway.example.com/v1/responses?omp_codex_suffix="],
+      ["kimi-k3", "https://gateway.example.com/v1"],
       ["claude-test", "https://gateway.example.com"],
     ]);
   });
@@ -61,6 +80,7 @@ describe("createProviderRegistration", () => {
     const registration = createProviderRegistration(CONFIG);
     const codex = registration.models?.find(model => model.id === "gpt-codex-test");
     const anthropic = registration.models?.find(model => model.id === "claude-test");
+    const completions = registration.models?.find(model => model.id === "kimi-k3");
 
     expect(codex?.api).toBe(CODEX_API);
     expect(codex?.remoteCompaction).toEqual({
@@ -70,6 +90,17 @@ describe("createProviderRegistration", () => {
       model: "gpt-codex-test",
     });
     expect(anthropic?.api).toBe("anthropic-messages");
+    expect(completions).toMatchObject({
+      api: "openai-completions",
+      supportsTools: true,
+      thinking: {
+        mode: "effort",
+        efforts: ["low", "high", "max"],
+        defaultLevel: "max",
+        requiresEffort: true,
+      },
+    });
+    expect(completions?.remoteCompaction).toBeUndefined();
     expect(anthropic?.remoteCompaction).toBeUndefined();
   });
 });

@@ -2,7 +2,13 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, expect, test } from "bun:test";
-import { CONFIG_FILE_NAME, loadProviderConfig, parseProviderConfig, providerConfigPath } from "../src/config.ts";
+import {
+  CONFIG_FILE_NAME,
+  loadProviderConfig,
+  parseProviderConfig,
+  providerConfigPath,
+  type ProviderModel,
+} from "../src/config.ts";
 
 const temporaryDirectories: string[] = [];
 
@@ -27,6 +33,29 @@ function codexModel(overrides: Record<string, unknown> = {}): Record<string, unk
   };
 }
 
+const KIMI_K3_MODEL: ProviderModel = {
+  id: "kimi-k3",
+  name: "Kimi K3",
+  api: "openai-completions",
+  baseUrl: "https://gateway.example.com/v1",
+  reasoning: true,
+  input: ["text", "image"],
+  supportsTools: true,
+  contextWindow: 1048576,
+  maxTokens: 1048576,
+  cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 0 },
+  thinking: {
+    mode: "effort",
+    efforts: ["low", "high", "max"],
+    defaultLevel: "max",
+    requiresEffort: true,
+  },
+};
+
+function kimiK3Model(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return { ...KIMI_K3_MODEL, ...overrides };
+}
+
 function validConfig(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     version: 1,
@@ -48,6 +77,7 @@ describe("parseProviderConfig", () => {
         apiKeyEnv: "BYTEPLUS_GATEWAY_API_KEY",
         models: [
           codexModel(),
+          kimiK3Model(),
           {
             id: "claude-test",
             name: "Claude Test",
@@ -72,8 +102,15 @@ describe("parseProviderConfig", () => {
     expect(config.apiKey).toBe("BYTEPLUS_GATEWAY_API_KEY");
     expect(config.models.map(model => [model.id, model.api])).toEqual([
       ["gpt-codex-test", "openai-codex-responses"],
+      ["kimi-k3", "openai-completions"],
       ["claude-test", "anthropic-messages"],
     ]);
+  });
+
+  test("accepts K3-style OpenAI Chat Completions metadata", () => {
+    const config = parseProviderConfig(validConfig({ models: [codexModel(), kimiK3Model()] }), {});
+
+    expect(config.models[1]).toEqual(KIMI_K3_MODEL);
   });
 
   test("accepts a configured Codex web search model", () => {
@@ -106,6 +143,11 @@ describe("parseProviderConfig", () => {
           }),
         ],
       }),
+      "must name a configured openai-codex-responses model",
+    ],
+    [
+      "web search model using Chat Completions",
+      validConfig({ webSearchModel: "kimi-k3", models: [codexModel(), kimiK3Model()] }),
       "must name a configured openai-codex-responses model",
     ],
     [
@@ -142,6 +184,43 @@ describe("parseProviderConfig", () => {
       "default effort absent from supported efforts",
       validConfig({ models: [codexModel({ thinking: { mode: "effort", efforts: ["high"], defaultLevel: "max" } })] }),
       "must also appear in efforts",
+    ],
+    [
+      "Chat Completions route included in base URL",
+      validConfig({ models: [codexModel(), kimiK3Model({ baseUrl: "https://gateway.example.com/v1/chat/completions" })] }),
+      "must be a base URL without the /chat/completions route for openai-completions",
+    ],
+    [
+      "Chat Completions query string",
+      validConfig({ models: [codexModel(), kimiK3Model({ baseUrl: "https://gateway.example.com/v1?route=chat" })] }),
+      "must not contain a query",
+    ],
+    [
+      "Chat Completions empty query delimiter",
+      validConfig({ models: [codexModel(), kimiK3Model({ baseUrl: "https://gateway.example.com/v1?" })] }),
+      "must not contain a query",
+    ],
+    [
+      "incompatible Chat Completions thinking mode",
+      validConfig({ models: [codexModel(), kimiK3Model({ thinking: { mode: "budget", efforts: ["max"] } })] }),
+      "must be effort for openai-completions",
+    ],
+    [
+      "non-boolean tool capability",
+      validConfig({ models: [codexModel(), kimiK3Model({ supportsTools: "yes" })] }),
+      "supportsTools must be a boolean",
+    ],
+    [
+      "non-boolean mandatory-effort capability",
+      validConfig({
+        models: [
+          codexModel(),
+          kimiK3Model({
+            thinking: { mode: "effort", efforts: ["max"], defaultLevel: "max", requiresEffort: "yes" },
+          }),
+        ],
+      }),
+      "requiresEffort must be a boolean",
     ],
   ])("rejects %s", (_name, input, message) => {
     expect(() => parseProviderConfig(input, { BYTEPLUS_GATEWAY_API_KEY: "secret" })).toThrow(String(message));

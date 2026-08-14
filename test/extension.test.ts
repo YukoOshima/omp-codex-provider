@@ -45,6 +45,24 @@ async function writeConfig(webSearchModel?: string): Promise<string> {
           maxTokens: 16384,
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         },
+        {
+          id: "kimi-k3",
+          name: "Kimi K3",
+          api: "openai-completions",
+          baseUrl: "https://gateway.example.com/v1",
+          reasoning: true,
+          input: ["text", "image"],
+          supportsTools: true,
+          contextWindow: 1048576,
+          maxTokens: 1048576,
+          cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 0 },
+          thinking: {
+            mode: "effort",
+            efforts: ["low", "high", "max"],
+            defaultLevel: "max",
+            requiresEffort: true,
+          },
+        },
       ],
     }),
     { mode: 0o600 },
@@ -69,6 +87,12 @@ describe("registerConfiguredProvider", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.[0]).toBe("byteplus-gateway");
     expect(calls[0]?.[1].models?.[0]?.api).toBe("openai-codex-responses");
+    expect(calls[0]?.[1].models?.[1]).toMatchObject({
+      id: "kimi-k3",
+      api: "openai-completions",
+      supportsTools: true,
+      thinking: { mode: "effort", efforts: ["low", "high", "max"], defaultLevel: "max", requiresEffort: true },
+    });
     expect(env.PI_CODEX_WEB_SEARCH_MODEL).toBeUndefined();
     release();
   });
