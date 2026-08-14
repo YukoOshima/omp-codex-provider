@@ -15,6 +15,8 @@ const MODEL_KEYS: Record<string, true> = {
   name: true,
   api: true,
   baseUrl: true,
+  apiKey: true,
+  apiKeyEnv: true,
   reasoning: true,
   input: true,
   supportsTools: true,
@@ -79,6 +81,8 @@ export interface ProviderModel {
   name: string;
   api: SupportedApi;
   baseUrl: string;
+  /** Resolved model-specific secret; removed before OMP model registration. */
+  apiKey?: string;
   reasoning: boolean;
   input: InputType[];
   supportsTools?: boolean;
@@ -227,11 +231,36 @@ function parseThinking(value: unknown, location: string, api: SupportedApi): Pro
   };
 }
 
-function parseModel(value: unknown, index: number): ProviderModel {
+function parseModelApiKey(
+  object: Record<string, unknown>,
+  location: string,
+  api: SupportedApi,
+  env: NodeJS.ProcessEnv,
+): string | undefined {
+  const hasLiteralKey = object.apiKey !== undefined;
+  const hasEnvKey = object.apiKeyEnv !== undefined;
+  if (!hasLiteralKey && !hasEnvKey) return undefined;
+  if (api !== "openai-completions") {
+    fail(location, "apiKey/apiKeyEnv overrides are only supported for openai-completions");
+  }
+  if (hasLiteralKey === hasEnvKey) {
+    fail(location, "must contain exactly one of apiKey or apiKeyEnv when overriding model credentials");
+  }
+  if (hasLiteralKey) return nonEmptyString(object.apiKey, `${location}.apiKey`);
+
+  const apiKeyEnv = nonEmptyString(object.apiKeyEnv, `${location}.apiKeyEnv`);
+  if (!ENV_NAME.test(apiKeyEnv)) fail(`${location}.apiKeyEnv`, "must be a valid environment-variable name");
+  const apiKey = env[apiKeyEnv];
+  if (!apiKey?.trim()) fail(`${location}.apiKeyEnv`, `${apiKeyEnv} is not set or is empty`);
+  return apiKey;
+}
+
+function parseModel(value: unknown, index: number, env: NodeJS.ProcessEnv): ProviderModel {
   const location = `models[${index}]`;
   const object = objectAt(value, location);
   rejectUnknownKeys(object, MODEL_KEYS, location);
   const api = oneOf(object.api, SUPPORTED_APIS, `${location}.api`);
+  const apiKey = parseModelApiKey(object, location, api, env);
   const reasoning = booleanAt(object.reasoning, `${location}.reasoning`);
   const thinking = object.thinking === undefined ? undefined : parseThinking(object.thinking, `${location}.thinking`, api);
   if (!reasoning && thinking !== undefined) fail(`${location}.thinking`, "requires reasoning=true");
@@ -240,6 +269,7 @@ function parseModel(value: unknown, index: number): ProviderModel {
     name: nonEmptyString(object.name, `${location}.name`),
     api,
     baseUrl: absoluteHttpsUrl(object.baseUrl, `${location}.baseUrl`, api),
+    ...(apiKey === undefined ? {} : { apiKey }),
     reasoning,
     input: uniqueStringArray(object.input, INPUT_TYPES, `${location}.input`),
     ...(object.supportsTools === undefined
@@ -273,7 +303,7 @@ export function parseProviderConfig(value: unknown, env: NodeJS.ProcessEnv = pro
   }
 
   if (!Array.isArray(object.models) || object.models.length === 0) fail("models", "must be a non-empty array");
-  const models = object.models.map(parseModel);
+  const models = object.models.map((model, index) => parseModel(model, index, env));
   const duplicateIds = models.filter((model, index) => models.findIndex(candidate => candidate.id === model.id) !== index);
   if (duplicateIds.length > 0) fail("models", `contains duplicate id(s): ${[...new Set(duplicateIds.map(model => model.id))].join(", ")}`);
   if (!models.some(model => model.api === "openai-codex-responses")) {
@@ -294,6 +324,14 @@ export function parseProviderConfig(value: unknown, env: NodeJS.ProcessEnv = pro
     ...(webSearchModel === undefined ? {} : { webSearchModel }),
     models,
   };
+}
+
+function containsLiteralApiKey(object: Record<string, unknown>): boolean {
+  if (object.apiKey !== undefined) return true;
+  if (!Array.isArray(object.models)) return false;
+  return object.models.some(model => {
+    return typeof model === "object" && model !== null && !Array.isArray(model) && "apiKey" in model;
+  });
 }
 
 export async function loadProviderConfig(
@@ -317,10 +355,10 @@ export async function loadProviderConfig(
   }
 
   const config = parseProviderConfig(parsed, env);
-  if ("apiKey" in objectAt(parsed, "root") && process.platform !== "win32") {
+  if (containsLiteralApiKey(objectAt(parsed, "root")) && process.platform !== "win32") {
     const mode = (await stat(filePath)).mode & 0o777;
     if ((mode & 0o077) !== 0) {
-      throw new Error(`${CONFIG_FILE_NAME}: ${filePath} contains apiKey and must have mode 0600`);
+      throw new Error(`${CONFIG_FILE_NAME}: ${filePath} contains a literal apiKey and must have mode 0600`);
     }
   }
   return config;

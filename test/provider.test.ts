@@ -9,6 +9,8 @@ import {
   PROVIDER_ID,
 } from "../src/provider.ts";
 
+const MODEL_API_KEY = "model-api-key";
+
 const CONFIG: ProviderFileConfig = {
   version: 1,
   apiKey: "BYTEPLUS_GATEWAY_API_KEY",
@@ -30,6 +32,7 @@ const CONFIG: ProviderFileConfig = {
       name: "Kimi K3",
       api: "openai-completions",
       baseUrl: "https://gateway.example.com/v1",
+      apiKey: MODEL_API_KEY,
       reasoning: true,
       input: ["text", "image"],
       supportsTools: true,
@@ -93,6 +96,7 @@ describe("createProviderRegistration", () => {
     expect(completions).toMatchObject({
       api: "openai-completions",
       supportsTools: true,
+      headers: { Authorization: `Bearer ${MODEL_API_KEY}` },
       thinking: {
         mode: "effort",
         efforts: ["low", "high", "max"],
@@ -100,6 +104,9 @@ describe("createProviderRegistration", () => {
         requiresEffort: true,
       },
     });
+    expect(Object.hasOwn(completions!, "apiKey")).toBeFalse();
+    expect(codex?.headers).toBeUndefined();
+    expect(anthropic?.headers).toBeUndefined();
     expect(completions?.remoteCompaction).toBeUndefined();
     expect(anthropic?.remoteCompaction).toBeUndefined();
   });

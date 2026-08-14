@@ -30,6 +30,7 @@
       "name": "Gateway Chat Completions Example",
       "api": "openai-completions",
       "baseUrl": "https://gateway.example.com/v1",
+      "apiKeyEnv": "CHAT_COMPLETIONS_API_KEY",
       "reasoning": true,
       "input": ["text", "image"],
       "supportsTools": true,

@@ -8,9 +8,10 @@ export const CODEX_PROVIDER_ID = "openai-codex";
 
 export function createProviderRegistration(config: ProviderFileConfig): ProviderConfigInput {
   const models: NonNullable<ProviderConfigInput["models"]> = config.models.map(model => {
-    const { thinking, ...baseModel } = model;
+    const { apiKey: modelApiKey, thinking, ...baseModel } = model;
     return {
       ...baseModel,
+      ...(modelApiKey === undefined ? {} : { headers: { Authorization: `Bearer ${modelApiKey}` } }),
       ...(thinking === undefined ? {} : { thinking: thinking as ThinkingConfig }),
       ...(model.api === CODEX_API
         ? {

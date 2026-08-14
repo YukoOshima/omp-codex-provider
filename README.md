@@ -21,7 +21,7 @@ It replaces the `byteplus-gateway` model catalog from one strict local file and 
 Install a tagged release, then restart OMP:
 
 ```bash
-omp plugin install github:YukoOshima/omp-codex-provider#v0.1.3
+omp plugin install github:YukoOshima/omp-codex-provider#v0.1.4
 ```
 
 ## Configure
@@ -43,14 +43,14 @@ Named profiles, XDG configuration, and `PI_CODING_AGENT_DIR` are respected becau
 The local file is ignored by Git. It must contain:
 
 - `version: 1`
-- exactly one of `apiKey` or `apiKeyEnv`
+- exactly one root-level `apiKey` or `apiKeyEnv` (always required, even when a model overrides it)
 - a complete `models` array for `byteplus-gateway`
 - complete model metadata and an absolute HTTPS `baseUrl` for every model
 - an `api` of `openai-completions`, `openai-codex-responses`, or `anthropic-messages` for every model
 - at least one `openai-codex-responses` model
 - optional `webSearchModel`, naming one configured `openai-codex-responses` model
 
-If `apiKey` is literal, the file must have mode `0600` on Unix. `apiKeyEnv` must name a populated environment variable at OMP startup.
+If any root- or model-level `apiKey` is literal, the file must have mode `0600` on Unix. Every `apiKeyEnv` must name a populated environment variable at OMP startup.
 
 ### Model schema
 
@@ -59,6 +59,8 @@ Every model is a strict projection of OMP's public model registration type. Requ
 `supportsTools` is an optional boolean. `thinking` is optional and accepts `mode`, a non-empty duplicate-free `efforts` array, optional `defaultLevel`, optional `supportsDisplay`, and optional `requiresEffort`. Both capability flags are booleans; `defaultLevel` must occur in `efforts`. A `thinking` object requires `reasoning: true`.
 
 For `openai-completions` and `openai-codex-responses`, `thinking.mode` must be `effort`. For `anthropic-messages`, it must be `anthropic-adaptive` or `anthropic-budget-effort`. Unknown fields are rejected rather than silently projected away. OMP 17.2.15 supports `supportsTools` and `thinking.requiresEffort`, so both are preserved during registration. The public OMP input schema represents text and images only; capabilities such as video input cannot be expressed in this file.
+
+An `openai-completions` model may override the root credential with exactly one optional `apiKey` or `apiKeyEnv`. The root credential remains required and serves every model without an override. The parser resolves a model `apiKeyEnv` to its actual secret, and registration converts the resolved override to a per-model `Authorization: Bearer ...` header while omitting both credential fields from OMP's public model object. OMP gives that model header precedence over the provider-level key. Model credential overrides on Codex or Anthropic APIs are rejected.
 
 ### Codex endpoint format
 
@@ -128,6 +130,7 @@ The extension fails during loading when the local file is missing, invalid, inse
 - unknown fields
 - duplicate model IDs
 - empty or missing secrets
+- invalid model credential overrides, including both fields or an API other than `openai-completions`
 - non-HTTPS or credential-bearing URLs
 - Codex URLs without the exact `/responses?omp_codex_suffix=` form
 - Chat Completions URLs that include the final `/chat/completions` route

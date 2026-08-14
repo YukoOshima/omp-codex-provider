@@ -50,6 +50,7 @@ async function writeConfig(webSearchModel?: string): Promise<string> {
           name: "Kimi K3",
           api: "openai-completions",
           baseUrl: "https://gateway.example.com/v1",
+          apiKey: "literal-model-test-key",
           reasoning: true,
           input: ["text", "image"],
           supportsTools: true,
@@ -91,8 +92,10 @@ describe("registerConfiguredProvider", () => {
       id: "kimi-k3",
       api: "openai-completions",
       supportsTools: true,
+      headers: { Authorization: "Bearer literal-model-test-key" },
       thinking: { mode: "effort", efforts: ["low", "high", "max"], defaultLevel: "max", requiresEffort: true },
     });
+    expect(Object.hasOwn(calls[0]?.[1].models?.[1] ?? {}, "apiKey")).toBeFalse();
     expect(env.PI_CODEX_WEB_SEARCH_MODEL).toBeUndefined();
     release();
   });

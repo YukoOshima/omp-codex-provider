@@ -113,6 +113,22 @@ describe("parseProviderConfig", () => {
     expect(config.models[1]).toEqual(KIMI_K3_MODEL);
   });
 
+  test("resolves a Chat Completions apiKeyEnv override without replacing the root credential", () => {
+    const modelSecret = "model-override-test-secret";
+    const config = parseProviderConfig(
+      validConfig({
+        apiKey: undefined,
+        apiKeyEnv: "ROOT_API_KEY",
+        models: [codexModel(), kimiK3Model({ apiKeyEnv: "CHAT_COMPLETIONS_API_KEY" })],
+      }),
+      { ROOT_API_KEY: "root-provider-test-secret", CHAT_COMPLETIONS_API_KEY: modelSecret },
+    );
+
+    expect(config.apiKey).toBe("ROOT_API_KEY");
+    expect(config.models[1]?.apiKey).toBe(modelSecret);
+    expect(Object.hasOwn(config.models[1]!, "apiKeyEnv")).toBeFalse();
+  });
+
   test("accepts a configured Codex web search model", () => {
     const config = parseProviderConfig(validConfig({ webSearchModel: "gpt-codex-test" }), {});
 
@@ -122,6 +138,34 @@ describe("parseProviderConfig", () => {
   test.each([
     ["both secret fields", validConfig({ apiKeyEnv: "BYTEPLUS_GATEWAY_API_KEY" }), "exactly one of apiKey or apiKeyEnv"],
     ["missing environment secret", validConfig({ apiKey: undefined, apiKeyEnv: "MISSING_KEY" }), "MISSING_KEY is not set"],
+    [
+      "both model secret fields",
+      validConfig({
+        models: [
+          codexModel(),
+          kimiK3Model({ apiKey: "model-test-key", apiKeyEnv: "CHAT_COMPLETIONS_API_KEY" }),
+        ],
+      }),
+      "must contain exactly one of apiKey or apiKeyEnv when overriding model credentials",
+    ],
+    [
+      "missing model environment secret",
+      validConfig({ models: [codexModel(), kimiK3Model({ apiKeyEnv: "MISSING_MODEL_KEY" })] }),
+      "MISSING_MODEL_KEY is not set",
+    ],
+    [
+      "model credential override on a Codex API",
+      validConfig({ models: [codexModel({ apiKey: "model-test-key" })] }),
+      "apiKey/apiKeyEnv overrides are only supported for openai-completions",
+    ],
+    [
+      "model credential without a root credential",
+      validConfig({
+        apiKey: undefined,
+        models: [codexModel(), kimiK3Model({ apiKey: "model-test-key" })],
+      }),
+      "root must contain exactly one of apiKey or apiKeyEnv",
+    ],
     ["unknown root field", validConfig({ extra: true }), "unknown field(s): extra"],
     ["duplicate model IDs", validConfig({ models: [codexModel(), codexModel()] }), "duplicate id(s): gpt-codex-test"],
     [
@@ -235,6 +279,21 @@ describe("parseProviderConfig", () => {
       expect(String(error)).not.toContain(secret);
     }
   });
+
+  test("never includes a literal model API key in validation errors", () => {
+    const secret = "model-super-secret-do-not-log";
+    try {
+      parseProviderConfig(
+        validConfig({
+          models: [codexModel(), kimiK3Model({ apiKey: secret, apiKeyEnv: "CHAT_COMPLETIONS_API_KEY" })],
+        }),
+        {},
+      );
+      throw new Error("expected parseProviderConfig to throw");
+    } catch (error) {
+      expect(String(error)).not.toContain(secret);
+    }
+  });
 });
 
 describe("loadProviderConfig", () => {
@@ -248,6 +307,27 @@ describe("loadProviderConfig", () => {
     await expect(loadProviderConfig(configPath, {})).rejects.toThrow("must have mode 0600");
     await chmod(configPath, 0o600);
     await expect(loadProviderConfig(configPath, {})).resolves.toMatchObject({ apiKey: "literal-test-key" });
+  });
+
+  test("requires mode 0600 when a model contains a literal key", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "omp-codex-provider-"));
+    temporaryDirectories.push(directory);
+    const configPath = path.join(directory, CONFIG_FILE_NAME);
+    const modelSecret = "literal-model-test-key";
+    const fileConfig = validConfig({
+      apiKey: undefined,
+      apiKeyEnv: "ROOT_API_KEY",
+      models: [codexModel(), kimiK3Model({ apiKey: modelSecret })],
+    });
+    await writeFile(configPath, JSON.stringify(fileConfig), { mode: 0o644 });
+    await chmod(configPath, 0o644);
+
+    await expect(loadProviderConfig(configPath, { ROOT_API_KEY: "root-provider-test-secret" })).rejects.toThrow(
+      "must have mode 0600",
+    );
+    await chmod(configPath, 0o600);
+    const config = await loadProviderConfig(configPath, { ROOT_API_KEY: "root-provider-test-secret" });
+    expect(config.models[1]?.apiKey).toBe(modelSecret);
   });
 
   test("derives the fixed config path from the active agent directory", () => {

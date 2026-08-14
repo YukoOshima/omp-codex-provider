@@ -1,6 +1,6 @@
 {
   "name": "@yukooshima/omp-codex-provider",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Strict OMP provider registration for OpenAI Chat Completions, Codex WebSocket turns, remote compaction v2, and BytePlus-backed Codex web search.",
   "type": "module",
   "license": "MIT",
@@ -18,7 +18,7 @@
   ],
   "omp": {
     "name": "BytePlus Codex Provider",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "description": "Registers byteplus-gateway with OpenAI Chat Completions, native Codex transport, remote compaction v2, and Codex web search.",
     "extensions": [
       "./extensions/byteplus-codex-provider.ts"
